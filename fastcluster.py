@@ -83,7 +83,7 @@ mthidx = {'single'   : 0,
           'centroid' : 5,
           'median'   : 6 }
 
-def linkage(X, method='single', metric='euclidean', preserve_input=True):
+def linkage(X, method='single', metric='euclidean', preserve_input=True, high_precision=True):
     r'''Hierarchical, agglomerative clustering on a dissimilarity matrix or on
 Euclidean data.
 
@@ -91,9 +91,12 @@ Apart from the argument 'preserve_input', the method has the same input
 parameters and output format as the functions of the same name in the
 module scipy.cluster.hierarchy.
 
-The argument X is preferably a NumPy array with singleing point entries
-(X.dtype==numpy.double). Any other data format will be converted before
-it is processed.
+The argument X is preferably a NumPy array with floating point entries
+(X.dtype==numpy.double). However, single-precision floating point
+(X.dtype==numpy.single) values are also accepted and processed 
+as such when 'high_precision' is set to False. Any lower precision format 
+will be upscaled to the either numpy.double or numpy.single depending 
+on the high_precision flag.
 
 If X is a one-dimensional array, it is considered a condensed matrix of
 pairwise dissimilarities in the format which is returned by
@@ -230,11 +233,12 @@ raised.
 
 The linkage method does not treat NumPy's masked arrays as special
 and simply ignores the mask.'''
+    dtype = double if high_precision else single_
     X = array(X, copy=False, subok=True)
     if X.ndim==1:
         if method=='single':
             preserve_input = False
-        X = array(X, dtype=single_, copy=preserve_input, order='C', subok=True)
+        X = array(X, dtype=dtype, copy=preserve_input, order='C', subok=True)
         NN = len(X)
         N = int(ceil(sqrt(NN*2)))
         if (N*(N-1)//2) != NN:
@@ -244,11 +248,11 @@ and simply ignores the mask.'''
         assert X.ndim==2
         N = len(X)
         X = pdist(X, metric=metric)
-        X = array(X, dtype=single_, copy=False, order='C', subok=True)
-    Z = empty((N-1,4), dtype=single_)
+        X = array(X, dtype=dtype, copy=False, order='C', subok=True)
+    Z = empty((N-1,4), dtype=dtype)
     if N > 1:
-        linkage_wrap(N, X, Z, mthidx[method])
-    return Z
+        linkage_wrap(N, X, Z, mthidx[method], high_precision)
+    return Z.astype(double)
 
 # This dictionary must agree with the enum metric_codes in fastcluster_python.cpp.
 mtridx = {'euclidean'      :  0,
@@ -277,7 +281,7 @@ mtridx = {'euclidean'      :  0,
 booleanmetrics = ('yule', 'matching', 'dice', 'kulsinski', 'rogerstanimoto',
                   'sokalmichener', 'russellrao', 'sokalsneath', 'kulsinski')
 
-def linkage_vector(X, method='single', metric='euclidean', extraarg=None):
+def linkage_vector(X, method='single', metric='euclidean', extraarg=None, high_precision=True):
     r'''Hierarchical (agglomerative) clustering on Euclidean data.
 
 Compared to the 'linkage' method, 'linkage_vector' uses a memory-saving
@@ -460,20 +464,21 @@ metric='matching':
   (False, True) but the Hamming distance is 0.5.
 
 metric='sokalmichener' is an alias for 'matching'.'''
+    dtype = double if high_precision else single_
     if method=='single':
         assert metric!='USER'
         if metric in ('hamming', 'jaccard'):
             X = array(X, copy=False, subok=True)
-            dtype = bool if X.dtype==bool else single_
+            dtype = bool if X.dtype==bool else dtype
         else:
-            dtype = bool if metric in booleanmetrics else single_
+            dtype = bool if metric in booleanmetrics else dtype
         X = array(X, dtype=dtype, copy=False, order='C', subok=True)
     else:
         assert metric=='euclidean'
-        X = array(X, dtype=single_, copy=(method=='ward'), order='C', subok=True)
+        X = array(X, dtype=dtype, copy=(method=='ward'), order='C', subok=True)
     assert X.ndim==2
     N = len(X)
-    Z = empty((N-1,4), dtype=single_)
+    Z = empty((N-1,4), dtype=dtype)
 
     if metric=='seuclidean':
         if extraarg is None:
@@ -483,7 +488,7 @@ metric='sokalmichener' is an alias for 'matching'.'''
             extraarg = inv(cov(X, rowvar=False))
         # instead of the inverse covariance matrix, pass the matrix product
         # with the data matrix!
-        extraarg = array(dot(X,extraarg),dtype=single_, copy=False, order='C', subok=True)
+        extraarg = array(dot(X,extraarg),dtype=dtype, copy=False, order='C', subok=True)
     elif metric=='correlation':
         X = X-expand_dims(X.mean(axis=1),1)
         metric='cosine'
@@ -493,5 +498,5 @@ metric='sokalmichener' is an alias for 'matching'.'''
     elif metric!='minkowski':
         assert extraarg is None
     if N > 1:
-        linkage_vector_wrap(X, Z, mthidx[method], mtridx[metric], extraarg)
-    return Z
+        linkage_vector_wrap(X, Z, mthidx[method], mtridx[metric], extraarg, high_precision)
+    return Z.astype(double)
